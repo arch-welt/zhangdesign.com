@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zhang Design - Kinetic Archive</title>
+    <title>Zhang Design - Space Archive</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -15,12 +15,11 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         let particles = [];
-        const mouse = { x: undefined, y: undefined, radius: 120 };
+        const mouse = { x: undefined, y: undefined, radius: 200 }; // 扩大影响范围，更有太空感
 
-        const GRAVITY = 0.15; 
-        const FRICTION = 0.8; 
-
-        // 这里的文字将被转化为物理对象
+        // 太空物理参数
+        const GRAVITY = 0.015;  // 极微弱重力
+        const FRICTION = 0.96; // 较高的阻力，让动作缓慢优雅
         const WORDS = [
             "ZHANGDESIGN", 
             "KASSEL GERMANY", 
@@ -34,16 +33,21 @@
                 this.y = y;
                 this.isText = isText;
                 this.text = text;
-                this.radius = isText ? ctx.measureText(text).width / 1.8 : radius;
-                this.velocity = { x: (Math.random() - 0.5) * 2, y: Math.random() * 2 };
-                this.color = isText ? "#fff" : `rgba(255, 255, 255, ${Math.random() * 0.4 + 0.2})`;
+                // 为文字设置一个稍大的碰撞半径，防止圆点重叠在文字上
+                this.radius = isText ? ctx.measureText(text).width / 1.6 : radius;
+                this.velocity = { 
+                    x: (Math.random() - 0.5) * 0.5, 
+                    y: Math.random() * 0.2 
+                };
+                this.color = isText ? "#fff" : `rgba(255, 255, 255, ${Math.random() * 0.3 + 0.1})`;
             }
 
             draw() {
                 if (this.isText) {
-                    ctx.font = "300 14px Helvetica";
+                    ctx.font = "300 15px 'Helvetica Neue', Helvetica, Arial, sans-serif";
                     ctx.fillStyle = "#fff";
                     ctx.textAlign = "center";
+                    ctx.letterSpacing = "2px";
                     ctx.fillText(this.text, this.x, this.y);
                 } else {
                     ctx.beginPath();
@@ -54,32 +58,36 @@
             }
 
             update() {
-                // 鼠标交互 (斥力)
+                // 鼠标互动（温柔的排斥力）
                 if (mouse.x && mouse.y) {
-                    let dx = mouse.x - this.x;
-                    let dy = mouse.y - this.y;
+                    let dx = this.x - mouse.x;
+                    let dy = this.y - mouse.y;
                     let dist = Math.sqrt(dx*dx + dy*dy);
                     if (dist < mouse.radius) {
-                        this.velocity.x -= (dx / dist) * 0.5;
-                        this.velocity.y -= (dy / dist) * 0.5;
+                        let force = (mouse.radius - dist) / mouse.radius;
+                        this.velocity.x += (dx / dist) * force * 0.5;
+                        this.velocity.y += (dy / dist) * force * 0.5;
                     }
                 }
 
+                // 物理应用
+                this.velocity.x *= FRICTION;
+                this.velocity.y *= FRICTION;
                 this.velocity.y += GRAVITY;
+
                 this.x += this.velocity.x;
                 this.y += this.velocity.y;
 
-                // 底部边界
+                // 边界反弹（太空球撞墙感）
                 if (this.y + this.radius > canvas.height) {
                     this.y = canvas.height - this.radius;
-                    this.velocity.y *= -FRICTION;
+                    this.velocity.y *= -0.5;
                 }
-                // 左右边界
                 if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
-                    this.velocity.x *= -FRICTION;
+                    this.velocity.x *= -0.8;
                 }
 
-                // 相互碰撞逻辑
+                // 粒子间缓慢碰撞
                 for (let p of particles) {
                     if (this === p) continue;
                     let dx = this.x - p.x;
@@ -89,14 +97,8 @@
 
                     if (dist < minDist) {
                         let angle = Math.atan2(dy, dx);
-                        let tx = this.x + Math.cos(angle) * minDist;
-                        let ty = this.y + Math.sin(angle) * minDist;
-                        let ax = (tx - p.x) * 0.1;
-                        let ay = (ty - p.y) * 0.1;
-                        this.velocity.x += ax;
-                        this.velocity.y += ay;
-                        p.velocity.x -= ax;
-                        p.velocity.y -= ay;
+                        this.velocity.x += Math.cos(angle) * 0.02;
+                        this.velocity.y += Math.sin(angle) * 0.02;
                     }
                 }
                 this.draw();
@@ -107,36 +109,41 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             particles = [];
-            ctx.font = "14px Helvetica"; // 预设字体以测量宽度
+            ctx.font = "15px Helvetica";
 
-            // 初始化文字粒子 (从顶部掉落)
+            // 文字初速度极慢，错开位置掉落
             WORDS.forEach((text, i) => {
                 let x = (canvas.width / (WORDS.length + 1)) * (i + 1);
-                particles.push(new Particle(x, 20, 0, true, text));
+                particles.push(new Particle(x, -50 * (i + 1), 0, true, text));
             });
 
-            // 初始圆点粒子
-            for (let i = 0; i < 40; i++) {
-                spawnDot();
+            for (let i = 0; i < 30; i++) {
+                spawnDot(Math.random() * canvas.height); // 初始分布一些点
             }
         }
 
-        function spawnDot() {
-            let r = Math.random() * 8 + 3;
-            particles.push(new Particle(Math.random() * canvas.width, -50, r));
+        function spawnDot(yPos = -20) {
+            let r = Math.random() * 6 + 2;
+            particles.push(new Particle(Math.random() * canvas.width, yPos, r));
         }
 
         function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // 每一帧都留一点点残影，增加流体感
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
             particles.forEach(p => p.update());
             
-            // 限制圆点数量，并持续从顶部生成
-            if (particles.length < 120 && Math.random() < 0.05) spawnDot();
+            // 极低频率生成新圆点，保持画面整洁清晰
+            if (particles.length < 80 && Math.random() < 0.02) spawnDot();
             
             requestAnimationFrame(animate);
         }
 
-        window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+        window.addEventListener('mousemove', e => { 
+            mouse.x = e.clientX; 
+            mouse.y = e.clientY; 
+        });
         window.addEventListener('resize', init);
         
         init();
