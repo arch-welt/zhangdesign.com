@@ -3,30 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zhang Design </title>
+    <title>Zhang Design Archive</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Helvetica', sans-serif; }
-        canvas { display: block; filter: blur(5px) contrast(15); } /* 这里的滤镜制造流体感 */
+        canvas { display: block; }
+        /* 文字排成一行，大写 */
         .ui-header { 
             position: absolute; 
-            top: 25px; 
+            top: 30px; 
             width: 100%; 
             display: flex; 
             justify-content: center; 
-            gap: 40px; 
+            gap: 30px; 
             color: #fff; 
             text-transform: uppercase; 
             font-size: 11px; 
-            letter-spacing: 3px; 
+            letter-spacing: 2px; 
             z-index: 100; 
             pointer-events: none;
-            mix-blend-mode: difference; /* 文字会根据背景颜色自动反色 */
+            font-weight: 300;
+            opacity: 0.8;
         }
     </style>
 </head>
 <body>
     <div class="ui-header">
-        <span>ZHANGDESIGN.COM</span>
+        <span>ZHANGDESIGN</span>
         <span>KASSEL GERMANY</span>
         <span>TIANJIN CHINA</span>
         <span>HONGZHANG@HOTMAIL.DE</span>
@@ -35,58 +37,135 @@
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        let balls = [];
-        const mouse = { x: undefined, y: undefined };
+        let particles = [];
+        const mouse = { x: undefined, y: undefined, radius: 100 }; // 鼠标影响范围
 
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
+        // 重力常量
+        const GRAVITY = 0.05; 
+        const FRICTION = 0.99; // 摩擦力，模拟空气阻力
 
-        class Ball {
-            constructor() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
-                this.vx = (Math.random() - 0.5) * 4;
-                this.vy = (Math.random() - 0.5) * 4;
-                this.radius = Math.random() * 50 + 50;
+        // 粒子构造函数
+        class Particle {
+            constructor(x, y, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = { x: (Math.random() - 0.5) * 0.5, y: (Math.random() * 0.5) }; // 初始随机横向速度和向下速度
+                this.mass = this.radius * 0.1; // 质量与半径相关
             }
+
             draw() {
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = '#fff';
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
                 ctx.fill();
+                ctx.closePath();
             }
+
             update() {
-                if (this.x + this.radius > canvas.width || this.x - this.radius < 0) this.vx *= -1;
-                if (this.y + this.radius > canvas.height || this.y - this.radius < 0) this.vy *= -1;
-                this.x += this.vx;
-                this.y += this.vy;
-                
-                // 鼠标交互
-                let dx = mouse.x - this.x;
-                let dy = mouse.y - this.y;
-                let distance = Math.sqrt(dx * dx + dy * dy);
-                if (distance < 150) {
-                    if (mouse.x > this.x && this.x > this.radius) this.x -= 2;
-                    if (mouse.x < this.x && this.x < canvas.width - this.radius) this.x += 2;
+                this.draw();
+
+                // 鼠标互动（斥力）
+                if (mouse.x && mouse.y) {
+                    let dx_mouse = mouse.x - this.x;
+                    let dy_mouse = mouse.y - this.y;
+                    let distance_mouse = Math.sqrt(dx_mouse * dx_mouse + dy_mouse * dy_mouse);
+
+                    if (distance_mouse < mouse.radius + this.radius) {
+                        let forceDirectionX = dx_mouse / distance_mouse;
+                        let forceDirectionY = dy_mouse / distance_mouse;
+                        let force = (mouse.radius + this.radius - distance_mouse) / 20; // 斥力大小
+                        this.velocity.x -= forceDirectionX * force;
+                        this.velocity.y -= forceDirectionY * force;
+                    }
                 }
+
+                // 应用重力
+                this.velocity.y += GRAVITY;
+
+                // 边界检测
+                if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
+                    this.velocity.x *= -1 * FRICTION;
+                    if (this.x + this.radius > canvas.width) this.x = canvas.width - this.radius;
+                    else if (this.x - this.radius < 0) this.x = this.radius;
+                }
+                if (this.y + this.radius > canvas.height) { // 碰到画布底部
+                    this.y = canvas.height - this.radius;
+                    this.velocity.y *= -1 * FRICTION; // 向上弹起
+                    this.velocity.x *= FRICTION; // 减小横向速度
+                } else if (this.y - this.radius < 0) { // 碰到画布顶部
+                    this.y = this.radius;
+                    this.velocity.y *= -1 * FRICTION;
+                }
+
+                // 粒子间碰撞
+                for (let i = 0; i < particles.length; i++) {
+                    if (this === particles[i]) continue;
+                    let dx = this.x - particles[i].x;
+                    let dy = this.y - particles[i].y;
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < this.radius + particles[i].radius) {
+                        // 简单的弹性碰撞
+                        let angle = Math.atan2(dy, dx);
+                        let overlap = (this.radius + particles[i].radius - distance);
+                        this.x += Math.cos(angle) * overlap / 2;
+                        this.y += Math.sin(angle) * overlap / 2;
+                        particles[i].x -= Math.cos(angle) * overlap / 2;
+                        particles[i].y -= Math.sin(angle) * overlap / 2;
+
+                        // 速度交换
+                        let tempVelocityX = this.velocity.x;
+                        let tempVelocityY = this.velocity.y;
+                        this.velocity.x = particles[i].velocity.x;
+                        this.velocity.y = particles[i].velocity.y;
+                        particles[i].velocity.x = tempVelocityX;
+                        particles[i].velocity.y = tempVelocityY;
+                    }
+                }
+
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
             }
         }
 
         function init() {
-            for (let i = 0; i < 15; i++) {
-                balls.push(new Ball());
+            particles = [];
+            // 初始在屏幕底部生成一些粒子
+            for (let i = 0; i < 50; i++) {
+                let radius = Math.random() * 10 + 5; // 半径 5 到 15
+                let x = Math.random() * (canvas.width - radius * 2) + radius;
+                let y = Math.random() * (canvas.height - radius * 2) + radius;
+                let color = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.5})`; // 随机透明度白色
+                particles.push(new Particle(x, y, radius, color));
+            }
+        }
+
+        // 持续生成新的粒子并从上方加入
+        function spawnParticle() {
+            let radius = Math.random() * 10 + 5;
+            let x = Math.random() * (canvas.width - radius * 2) + radius;
+            let y = -radius; // 从屏幕顶部生成
+            let color = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.5})`;
+            particles.push(new Particle(x, y, radius, color));
+            // 如果粒子过多，移除最老的粒子
+            if (particles.length > 200) { // 控制屏幕上的粒子数量
+                particles.shift(); 
             }
         }
 
         function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            balls.forEach(ball => {
-                ball.update();
-                ball.draw();
-            });
             requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // 清空画布
+
+            particles.forEach((particle) => {
+                particle.update();
+            });
+            // 每隔一段时间生成新粒子
+            if (Math.random() < 0.2) { // 调整这个值来控制粒子生成频率
+                spawnParticle();
+            }
         }
 
         window.addEventListener('mousemove', (e) => {
@@ -94,8 +173,19 @@
             mouse.y = e.clientY;
         });
 
-        window.addEventListener('resize', resize);
-        resize();
+        window.addEventListener('mouseleave', () => { // 鼠标离开画布时清除鼠标位置
+            mouse.x = undefined;
+            mouse.y = undefined;
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            init(); // 重新初始化粒子以适应新尺寸
+        });
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
         init();
         animate();
     </script>
